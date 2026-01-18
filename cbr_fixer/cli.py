@@ -8,6 +8,7 @@ from pathlib import Path
 from .processor import convert_cbr_to_cbz, fix_extension
 from .packager import package_to_cbr
 from .scanner import scan_directory
+from .utils import log_operation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,10 +137,32 @@ def run_fixer(directory: Path, dry_run: bool, recursive: bool):
     for cbz_file in scan_result.cbz_files:
         logger.info(f"\nProcessing CBZ file: {cbz_file}")
         
-        # Check and fix extension if needed
-        fixed_path = fix_extension(cbz_file, dry_run=dry_run)
-        if fixed_path:
-            fixed_count += 1
+        # Detect actual file type first
+        from .file_detector import detect_file_type
+        actual_type = detect_file_type(cbz_file)
+        
+        if actual_type == 'CBR':
+            # File has .cbz extension but is actually a CBR
+            # Step 1: Fix extension to .cbr
+            fixed_path = fix_extension(cbz_file, dry_run=dry_run)
+            if fixed_path:
+                fixed_count += 1
+                # Step 2: Convert the .cbr file to .cbz
+                if dry_run:
+                    # In dry-run, show what would happen: convert the fixed .cbr to .cbz
+                    cbz_output = fixed_path.with_suffix('.cbz')
+                    log_operation(f"Would then convert CBR to CBZ: {fixed_path} -> {cbz_output}", dry_run=True)
+                    converted_count += 1
+                else:
+                    # In normal mode, convert the newly created .cbr file
+                    converted_path = convert_cbr_to_cbz(fixed_path, dry_run=dry_run)
+                    if converted_path:
+                        converted_count += 1
+        else:
+            # File is actually a CBZ - just check if extension needs fixing
+            fixed_path = fix_extension(cbz_file, dry_run=dry_run)
+            if fixed_path:
+                fixed_count += 1
     
     # Package image sequences
     packaged_count = 0
